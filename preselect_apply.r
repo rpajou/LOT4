@@ -10,6 +10,7 @@
 
 # set path
 path<-"C://Users//Acer//OneDrive//Documents//GitHub//LOT4//"
+<<<<<<< HEAD
 path_dir<-"C://Users//Acer//OneDrive//Documents//GitHub//LOT4//CDMInstances//LOT4//"
 #get tables 
 #VJOLA please insert the code here for loading the lists of tables
@@ -25,11 +26,19 @@ actual_tables_preselect$EUROCAT<-list.files(path_dir, pattern="^EUROCAT")
 actual_tables_preselect$PERSONS<-list.files(path_dir, pattern="^PERSONS")
 
 all_actual_tables<-list.files(path_dir)
+=======
+
+#get tables 
+#VJOLA please insert the code here for loading the lists of tables
+
+
+>>>>>>> 2e0db6dc49e3c2d43bb21e8fd4cebc6ca6b562f9
 
 
 #get functions
 source(paste0(path, "preselection_DAP.r"))
 
+<<<<<<< HEAD
 
 #run personsfilter on PERSONS table (PERSONS USUALLY one table)
 
@@ -61,3 +70,26 @@ for(i in 1:length(actual_tables_preselect)){
 }
 
 #only wrote 8 files (one for each section of the actual files list)... It's only keeping the last one in each sublist...
+=======
+firstfilter_ID<-vector()
+for(i in 1:length(PERSONS{
+ output<- firstfilter(personstable = PERSONS[[i]])
+ firstfilter_ID<-c(firstfilter_ID, output)
+ firstfilter_ID<-unique(firstfilter_ID)
+}))
+  
+  ATCfilter_ID<-vector()
+for(i in 1:length(PERSONS{
+  output<- ATCfilter(medtable = MEDICINES[[i]])
+  ATCfilter_ID<-c(ATCfilter_ID, output)
+  ATCfilter_ID<-unique(ATCfilter_ID)
+}))
+  
+  final_ID<-(ATCfilter_ID%in%firstfilter_ID)
+
+for(i in 1:length(tables)){
+  #need to name each new table the same as the old table, then write in the new folder
+  tables[[i]]<-tables[[i]][tables[[i]]$person_id%in%final_ID]
+  write.csv(tables[[i]], paste0(path,"CDMInstances\\CDMInstances_preselect\\"))
+}
+>>>>>>> 2e0db6dc49e3c2d43bb21e8fd4cebc6ca6b562f9

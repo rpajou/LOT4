@@ -11,8 +11,10 @@
 # set path
 path_write<-"C://Users//Acer//OneDrive//Documents//GitHub//LOT4//CDMInstances//LOT4//CDMInstances_preselection//"
 path_dir<-"C://Users//Acer//OneDrive//Documents//GitHub//LOT4//CDMInstances//LOT4//"
+
+
 #get tables 
-#VJOLA please insert the code here for loading the lists of tables
+
 #Get EVENTS, MO, SO, MEDICINES, VACCINES tables
 actual_tables_preselect<-list()
 actual_tables_preselect$EVENTS<-list.files(path_dir, pattern="^EVENTS")
@@ -112,7 +114,7 @@ tables_vec_all<-unique(as.vector(tables_df$CDMtableName))
 
 #subset data using presection IDs and write new files
 #need to name each new table the same as the old table, then write in the new folder
-for(i in 1:length(tables_vec)){
+for(i in 1:length(tables_vec_all)){
   tablename<-(tables_vec_all[i])
     mytable<-read.csv(paste0(path_dir,tablename), row.names = NULL)
     preselect_table<-mytable[mytable$person_id%in%final_ID,]

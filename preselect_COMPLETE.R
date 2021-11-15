@@ -121,3 +121,4 @@ for(i in 1:length(tables_vec_all)){
     write.csv(preselect_table, paste0(path_write, tablename))
 }
 
+#add sampling to make a test set (10,000)

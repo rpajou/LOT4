@@ -1,0 +1,571 @@
+# Name of the file with codelist
+filename <- "ANNEX2a_Valproate_Code_List_20201125.xlsx"
+# Codes you are searching
+matches <- c("ADR")
+source(paste0(pre_dir,"Create_Analysis_Conceptsets.R"))
+
+# Create Events folder in temp folder 
+ifelse(!dir.exists(file.path(tmp, "EVENTS")), dir.create(paste(tmp, "EVENTS", sep="")), FALSE)
+ifelse(!dir.exists(file.path(populations_dir, "DIAGNOSES")), dir.create(paste(populations_dir, "DIAGNOSES", sep="")), FALSE)
+# Create path to event folder 
+events_tmp <- paste0(tmp, "EVENTS/")
+diag_pop <- paste0(populations_dir, "DIAGNOSES/")
+count_list <- list()
+# Reads in study population
+study_population <- readRDS(paste0(populations_dir, "ALL_study_population.rds"))
+
+
+# Create empty df for counts
+year <- seq(2009, 2019)
+month <- seq(1, 12)
+empty_counts_df <- expand.grid(year, month)
+names(empty_counts_df) <- c("year", "month")
+
+if(length(actual_tables$EVENTS)>0){
+  ###################################################
+  #List for saving info
+  ###################################################
+  # print("Creating lists to save the information.")
+  # orig_no_rows_events<-list() #original number of records in the EVENTS table
+  # #######################
+  # #pers_stdpop_not_events
+  # events_study_pop<-list() #number of records for the study population, no selection criteria for time applied
+  # events_date_miss<-list() #number of record with missing event_date
+  # years_events<-list()
+  # events_not_vocabularies<-list() #number of records where event_vocabulary not of interest
+  # events_code_vocabulary_miss<-list() #number of records with both event code and event record vocabulary missing
+  # events_code_pres_voc_miss<-list() #number of records with missing vocabularies
+  # events_sex_not_specified<-list()
+  # ######################
+  # events_out_st_per<-list() #number of EVENTS records outside the observation period(check is done on individual level)
+  # events_study_pop_obsper<-list() #number of records in the study population inside study period
+  # ######################
+  # events_stdpop_no_meaning<-list() #number of records in the study population with no meaning
+  # events_excluded_meanings<-list() #number of recorded with excluded meanings
+  # meanings_events<-list() #all meanings present
+  # #############################################################################
+  # #Table 20: Missingness of event codes
+  # #############################################################################
+  # events_study_population<-list() #number of records in the study population
+  # events_study_population_meaning<-list() #number of records in the study population by meaning
+  # events_study_population_my<-list() #number of records in the study population by meaning and year
+  # empty_event_code.my<-list()#number of records with empty event code in the study population by meaning and year
+  # ##############################################################################
+  # male_population_events<-list() #save whether males are included
+  # female_population_events<-list() #save whether females are included
+  # ##############################
+  # events_study_population_meaning_f<-list() #number of records in females [12-55] years old by meaning
+  # events_study_population_f<-list() #number of records in females [12-55] years old
+  # ##############################
+  # females_childbearing_events<-list() #check if females of childbearing age are available
+  # ###############################
+  #### -> FOR LOOP
+  w<-1
+  for (y in 1:length(actual_tables$EVENTS)){
+    #Load the table
+    df<-fread(paste(path_dir, actual_tables$EVENTS[y], sep=""), stringsAsFactors = FALSE)
+    df<-df[,c("person_id", "start_date_record", "event_code", "event_record_vocabulary", "meaning_of_event")]
+    df<-df[, lapply(.SD, FUN=function(x) gsub("^$|^ $", NA, x))] #make sure missing data is read appropriately
+    setnames(df,"meaning_of_event","meaning")
+    setnames(df,"start_date_record","event_date")
+    setnames(df,"event_record_vocabulary","event_vocabulary")
+    colnames_events<-names(df)
+    std_names_events<-names(study_population)
+    colnames_events<-colnames_events[!colnames_events %in% "person_id"]
+    #get the total number of records(a)
+    # orig_no_rows_events[[w]]<-df[,.N]
+    #merge with the study_population table(there is no missing data in this table)
+    df[,person_id:=as.character(person_id)]
+    study_population[,person_id:=as.character(person_id)]
+    df<-df[study_population,on=.(person_id)]#left join, keeps all people in the study population even if they didn't have an event
+    df<-df[,age_start_follow_up:=as.numeric(age_start_follow_up)]
+    # pers_stdpop_not_events<-df[rowSums(is.na(df[,..colnames_events]))==length(colnames_events), ..std_names_events] #subjects id present in the study population but that do not have an event
+    # pers_stdpop_not_events<-pers_stdpop_not_events[!duplicated(person_id)]
+    df<-df[!rowSums(is.na(df[,..colnames_events]))==length(colnames_events)]
+    # if(pers_stdpop_not_events[,.N]>0){
+    #   saveRDS(pers_stdpop_not_events, paste0(events_tmp, paste0("stdpop_not_events_", actual_tables$EVENTS[y], ".rds"))) #to give the results we will merge the files by keeping only person_id that are in all saved files
+    # } # End of if(pers_stdpop_not_events[,.N]>0){
+    # rm(pers_stdpop_not_events)
+    # events_study_pop[[w]]<-df[,.N] #number of records for the study population, no selection criteria for time applied
+    #transform into date variables
+    df[,event_date:=as.IDate(event_date,"%Y%m%d")] #transform to date variables
+    #create year variable
+    df[,year:=year(event_date)]
+    #number of records with both event_date missing
+    # events_date_miss[[w]]<-df[is.na(year),.N]
+    #remove records with both dates missing
+    df<-df[!is.na(year)]
+    #identify persons that have an event before start_of_follow_up
+    df[,date_dif:=start_follow_up-event_date][,filter:=fifelse(date_dif<=365 & date_dif>=1,1,0)]
+    #get person_id
+    persons_event_prior<-unique(na.omit(df[filter==1,person_id]))
+    df[,date_dif:=NULL][,filter:=NULL]
+    #remove records that are outside the obs_period for all subjects
+    # events_out_st_per[[w]]<-df[event_date<start_follow_up | event_date>end_follow_up,.N] #number of records outside study population
+    df[(event_date<start_follow_up | event_date>end_follow_up), obs_out:=1]
+    df<-df[is.na(obs_out)] #remove records outside study period
+    df[,obs_out:=NULL]
+    # events_study_pop_obsper[[w]]<-df[,.N] #number of records after removing records outside study period
+    # events_stdpop_no_meaning[[w]]<-df[is.na(meaning),.N] #number of records with empty meaning
+    df<-df[!is.na(meaning)] #remove records with empty meaning
+    # events_code_vocabulary_miss[[w]]<-df[is.na(event_code) & is.na(event_vocabulary),.N]#numbe rof records with both event code and vocabulary missing
+    df<-df[!is.na(event_code) | !is.na(event_vocabulary)]# remove records with both event code and event record vocabulary missing
+    # events_code_pres_voc_miss[[w]]<-df[!is.na(event_code) & is.na(event_vocabulary),.N] #number of records where event code present but vocabulary missing
+    df<-df[!is.na(event_vocabulary)] #remove empty vocabularies
+    # events_not_vocabularies[[w]]<-df[event_vocabulary %!in% vocabularies_list,.N] #number of records where vocabularies doesn't match the codelist
+    df<-df[is.na(event_vocabulary) | event_vocabulary %in% vocabularies_list] #remove records where vocabularies are not of interest
+    # events_sex_not_specified[[w]]<-df[sex_at_instance_creation =="U" | sex_at_instance_creation == "O",.N] #number of records with unspecified sex
+    df<-df[sex_at_instance_creation == "M" | sex_at_instance_creation == "F"]#remove unspecified sex
+    df[person_id %in% persons_event_prior, event_prior:=1]
+    df[person_id %!in% persons_event_prior, event_prior:=0]
+    #########
+    # meanings_events[[w]]<-unique(na.omit(df[, meaning])) #will be used for description
+    # years_events[[w]]<-unique(na.omit(df[, year])) #will be used for description
+    # years_events[[w]]<-unique(na.omit(df[, year])) #will be used for description
+    # male_population_events[[w]]<-ifelse(df[sex_at_instance_creation=="M",.N]>0,1,0)
+    # female_population_events[[w]]<-ifelse(df[sex_at_instance_creation=="F",.N]>0,1,0)
+    # females_childbearing_events[[w]]<-ifelse(df[sex_at_instance_creation=="F" & age_start_follow_up>=12 & age_start_follow_up<=55,.N]>0,1,0)
+    # # ############################
+    # # #Table 20
+    # # ###########################
+    # events_study_population[[w]]<-df[,.N] #number of records in the study population
+    # events_study_population_meaning[[w]]<-df[,.N, by="meaning"] #number of records in the study population by meaning
+    # events_study_population_my[[w]]<-df[,.N, by=.(meaning,year)] #number of records in the study population by meaning and year
+    # empty_event_code.my[[w]]<-df[is.na(event_code), .N, by=.(meaning,year)] #number of records with missing event code when date disp/presc is present
+
+    #################################################################
+    #Match codes based on coding system and code: algorithm start with
+    #################################################################
+    # Create a new folder for each ADR type (to store records with matching ADR codes)
+    events_ADR <- list()
+    for (z in 1:length(conditions_all)){
+      ifelse(!dir.exists(file.path(events_tmp, names(conditions_all[z]))), dir.create(paste(events_tmp, names(conditions_all[z]), sep="")), FALSE)
+      events_ADR[[z]] <- paste(events_tmp, names(conditions_all[z]), sep="")
+      }
+    # function to move generated files into correspondingly named folder 
+    move_files <- function(x){
+      file.rename( from = file.path(events_tmp, x), to = file.path(paste0(events_tmp, names(conditions_all[l])), x))
+    }
+    
+    # Filters records with ICD/ICPC codes (for all ADR types). Outcome -> records with matching codes are stored in ADR file of corrsponding ADR type name e.g. records with code type belonging to ADR-Nausea group will be stored here.
+    if(df[,.N]>0){
+      years_study_events<-df[!duplicated(year), year]
+      
+      if(sum(df[!duplicated(event_vocabulary), event_vocabulary] %in% c("ICD9CM", "ICD10CM", "ICD10", "ICD9","ICPC2P", "ICPC","MTHICD9"))>0){
+        for(l in 1:length(conditions_start_all)) {
+          for (i in 1:length(conditions_start_all[[l]])){
+            for(j in 1:length(conditions_start_all[[l]][[i]])){
+              z<-1
+              repeat{
+                if(df[grepl(paste0("^",paste(conditions_start_all[[l]][[i]][[j]][z])), df[["event_code"]]) & event_vocabulary==names(conditions_start_all[[l]][[i]])[j]][,.N]>0){
+                  df[grepl(paste0("^",paste(conditions_start_all[[l]][[i]][[j]][z])), df[["event_code"]]) & event_vocabulary==names(conditions_start_all[[l]][[i]])[j],filter:=1]
+                } 
+                z<-z+1
+                if(z>length(conditions_start_all[[l]][[i]][[j]])){
+                  break
+                } 
+              } 
+              if("filter" %!in% names(df)){
+                df[,filter:=0]
+                }
+              m<-1
+              repeat{
+                if(df[filter==1 & year==years_study_events[m],.N]>0){
+                  saveRDS(data.table(df[filter==1 & year==years_study_events[m]], condition=names(conditions_start_all[[l]][i])),
+                          paste0(events_tmp,years_study_events[m], "_", names(conditions_start_all[[l]][i]), "_",actual_tables$EVENTS[y], "_start.rds"))
+                  } 
+                m<-m+1
+                if(m >length(years_study_events)){
+                  break
+                } 
+              }
+              df[,filter:=NULL]
+              } 
+            
+            # Get list of saved files
+            conditions_files<-c(list.files(events_tmp, "\\_start.rds$"))
+            # Move files to correspondingly named file for ADR
+            lapply(conditions_files, move_files)
+            }
+          }
+        }  
+      #output to g_intermediate/tmp/EVENTS datasets split by condition, year, type of codes(start with:ICD10,ICD10CM,ICPC,ICD9,ICD9CM)
+  # Filters records with READ codes (for all ADR types). Outcome -> records with matching codes are stored in ADR file of corrsponding ADR type name e.g. records with code type belonging to ADR-Nausea group will be stored here.
+      
+      if(sum(df[!duplicated(event_vocabulary), event_vocabulary] %in% c("RCD","RCD2"))>0){
+        for(l in 1:length(conditions_read_all)) {
+          for (i in 1:length(conditions_read_all[[l]])){
+            for(j in 1:length(conditions_read_all[[l]][[i]])){
+              z<-1 
+              repeat{
+                if(df[grepl(paste0("^",paste(conditions_read_all[[l]][[i]][[j]][z])), df[["event_code"]]) & event_vocabulary==names(conditions_read_all[[l]][[i]])[j]][,.N]>0){
+                  df[grepl(paste0("^",paste(conditions_read_all[[l]][[i]][[j]][z])), df[["event_code"]]) & event_vocabulary==names(conditions_read_all[[l]][[i]])[j],filter:=1]
+                  } 
+                z<-z+1
+                if(z>length(conditions_read_all[[l]][[i]][[j]])){
+                  break 
+                  }
+              } 
+              if("filter" %!in% names(df)){
+                df[,filter:=0]
+                }
+              m<-1
+              repeat{
+                if(df[filter==1 & year==years_study_events[m],.N]>0){
+                  saveRDS(data.table(df[filter==1 & year==years_study_events[m]], condition=names(conditions_read_all[[l]][i])), paste0(events_tmp,years_study_events[m],"_", names(conditions_read_all[[l]][i]), "_",actual_tables$EVENTS[y], "_RCD.rds"))
+                  } 
+                m<-m+1
+                if(m >length(years_study_events)){
+                  break
+                  }
+                } 
+              df[,filter:=NULL]
+              } 
+              } 
+          # Get list of saved files
+          conditions_files<-c(list.files(events_tmp, "\\_RCD.rds$"))
+          # Move files to correspondingly named file for ADR
+          lapply(conditions_files, move_files)
+          }
+        }
+    #output to g_intermediate/tmp/EVENTS datasets split by condition, year, type of codes(start with:Read codes)
+  #  Filter records with SNOMED codes (for all ADR types). Outcome -> records with matching codes are stored in ADR file of corrsponding ADR type name e.g. records with code type belonging to ADR-Nausea group will be stored here.
+      
+      if(sum(df[!duplicated(event_vocabulary), event_vocabulary] %in% c("SNOMEDCT_US", "SCTSPA"))>0){
+        for(l in 1:length(conditions_snomed_all)) { 
+          for (i in 1:length(conditions_snomed_all[[l]])){
+            for(j in 1:length(conditions_snomed_all[[l]][[i]])){
+              z<-1
+              repeat{
+                if(df[grepl(paste0("^",paste(conditions_snomed_all[[l]][[i]][[j]][z])), df[["event_code"]]) & event_vocabulary==names(conditions_snomed_all[[l]][[i]])[j]][,.N]>0){
+                  df[grepl(paste0("^",paste(conditions_snomed_all[[l]][[i]][[j]][z])), df[["event_code"]]) & event_vocabulary==names(conditions_snomed_all[[l]][[i]])[j],filter:=1]
+                  }
+                z<-z+1
+                if(z>length(conditions_snomed_all[[l]][[i]][[j]])){
+                  break
+                  }
+              }
+              if("filter" %!in% names(df)){df[,filter:=0]}
+              m<-1
+              repeat{
+                if(df[filter==1 & year==years_study_events[m],.N]>0){
+                  saveRDS(data.table(df[filter==1 & year==years_study_events[m]], condition=names(conditions_snomed_all[[l]][i])), paste0(events_tmp,years_study_events[m],"_", names(conditions_snomed_all[[l]][i]), "_",actual_tables$EVENTS[y], "_SNOMED.rds"))
+                  }
+                m<-m+1
+                if(m >length(years_study_events)){
+                  break
+                  }
+                }
+              df[,filter:=NULL]
+              }
+          }
+          # Get list of saved files
+          conditions_files<-c(list.files(events_tmp, "\\_SNOMED.rds$"))
+          # Move files to correspondingly named file for ADR
+          lapply(conditions_files, move_files)
+          }
+        }
+      #output to g_intermediate/tmp/EVENTS datasets split by condition, year, type of codes(exact match: SNOMED)
+      } 
+    w<-w+1
+    #rm(df)
+    } # End of for loop
+
+  # LoadS files from all folders to form a df for each ADR type
+  # Counts the number of patients per ADR type per month per year, stores as a list 
+ # what should the counts be displayed 
+  folders_list <- list.files(events_tmp, "\\ADR")
+ 
+  for (i in 1:length(folders_list)){
+    file_list <-list.files(paste0(events_tmp, folders_list[i]), "\\.rds$")
+    if (length(file_list)>0){
+      combined_ADR_events<-lapply(paste0(paste0(events_tmp, folders_list[i], "/"), file_list), readRDS)
+      combined_ADR_events<-do.call(rbind,combined_ADR_events)
+      count <- combined_ADR_events[,.N, by = .(year, month(event_date))]
+      count <- merge(x = empty_counts_df, y = count, by = c("year", "month"), all.x = TRUE)
+      count[is.na(count$N),]$N <- 0
+      count_list[[i]] <- count
+      
+    }
+          if (subpopulations_present=="Yes"){
+            if(combined_ADR_events[,.N]>0){
+              saveRDS(combined_ADR_events, paste0(diag_pop,subpopulations_names[s], "/", folders_list[i],"_events_ADR.rds"))
+              saveRDS(count, paste0(diag_pop,subpopulations_names[s], "/", folders_list[i],"_counts.rds"))
+            }
+          } else {
+            if(combined_ADR_events[,.N]>0){
+              saveRDS(combined_ADR_events, paste0(diag_pop,folders_list[i],"_events_ADR.rds"))
+              saveRDS(count, paste0(diag_pop,folders_list[i],"_counts.rds"))
+            }
+          }
+  }
+  
+
+  #number of subjects in the study population that have not had an event
+  # stdpop_not_events_files<-list.files(events_tmp, pattern = "stdpop_not_events")
+  # if (length(stdpop_not_events_files)>0){
+  #   stdpop_not_events<-readRDS(paste0(events_tmp, stdpop_not_events_files[1]))
+  #   i<-2
+  #   while(i <= length(stdpop_not_events_files)){
+  #     a<-readRDS(paste0(events_tmp, stdpop_not_events_files[i]))
+  #     stdpop_not_events<-rbind(stdpop_not_events, a)
+  #     stdpop_not_events<-stdpop_not_events[duplicated(person_id)]
+  #     i<-i+1
+  #     rm(a)
+  #   }
+  #   stdpop_not_events<-stdpop_not_events[,.N]
+  # 
+  #   for(i in 1:length(stdpop_not_events_files)){
+  #     unlink(paste0(events_tmp,stdpop_not_events_files[i]))
+  #   }
+  #   rm(stdpop_not_events_files)
+  # } else {
+  #   stdpop_not_events<-0
+  # }
+
+  #################################################################################################
+  #Flowchart
+  ################################################################################################
+#   print("Creating flowchart.")
+#   print("Get number of records in the original table.")
+#   #original number of records in the EVENTS table(flowchart 1)
+#   orig_no_rows_events<-do.call(rbind,orig_no_rows_events)
+#   orig_no_rows_events<-sum(orig_no_rows_events)
+#   #number of records with excluded meanings(flowchart 2)
+#   print("Get number of records with excluded meanings.")
+#   events_excluded_meanings<-do.call(rbind, events_excluded_meanings)
+#   events_excluded_meanings<-sum(events_excluded_meanings)
+#   #number of records for the study population, no selection criteria for time applied (flowchart 3)
+#   print("Get number of records for the study population (no time criteria applied).")
+#   events_study_pop<-do.call(rbind,events_study_pop)
+#   events_study_pop<-sum(events_study_pop)
+#   #Number of records with date record missing(flowchart 4)
+#   print("Get number of records with date record missing.")
+#   events_date_miss<-do.call(rbind,events_date_miss)
+#   events_date_miss<-sum(events_date_miss)
+#   #number of medicines records outside the observation period(check is done on individual level) (flowchart 5)
+#   print("Get number of records outside observation period.")
+#   events_out_st_per<-do.call(rbind,events_out_st_per)
+#   events_out_st_per<-sum(events_out_st_per)
+#   #number of records in the study population with event_date inside study period (flowchart 6)
+#   print("Get number of records for the study population(time criteria applied).")
+#   events_study_pop_obsper<-do.call(rbind,events_study_pop_obsper)
+#   events_study_pop_obsper<-sum(events_study_pop_obsper)
+#   #number of records in the study population with no meaning (flowchart 7)
+#   print("Get number of records with no meaning.")
+#   events_stdpop_no_meaning<-do.call(rbind,events_stdpop_no_meaning)
+#   events_stdpop_no_meaning<-sum(events_stdpop_no_meaning)
+#   #Number of records with both code and vocabulary variables missing
+#   print("Get number of records with both code and vocabulary variables missing")
+#   events_code_vocabulary_miss<-do.call(rbind,events_code_vocabulary_miss)
+#   events_code_vocabulary_miss<-sum(events_code_vocabulary_miss)
+#   #Number of records with empty vocabulary when code is present
+#   print("Get number of records with empty vocabulary when code is present")
+#   events_code_pres_voc_miss<-do.call(rbind,events_code_pres_voc_miss)
+#   events_code_pres_voc_miss<-sum(events_code_pres_voc_miss)
+#   #Number of records with vocabularies not present in the codelist
+#   print("Get number of records with vocabularies not present in the codelist")
+#   events_not_vocabularies<-do.call(rbind,events_not_vocabularies)
+#   events_not_vocabularies<-sum(events_not_vocabularies)
+#   #number of records with unspecified sex
+#   print("Get number of records with unspecified sex.")
+#   events_sex_not_specified<-do.call(rbind,events_sex_not_specified)
+#   events_sex_not_specified<-sum(events_sex_not_specified)
+#   #number of records in the study population
+#   print("Get number of records for study population.")
+#   events_study_population<-do.call(rbind,events_study_population)
+#   events_study_population<-sum(events_study_population)
+#   
+#   flowchart_events<-data.table(INDICATOR=c("Number of records in the original table",
+#                                            "Exclude:Number of records with excluded meanings",
+#                                            "Number of records for the study_population(no time criteria)",
+#                                            "Exclude: Number of records with date record missing",
+#                                            "Exclude: Number of records with date record outside study period",
+#                                            "Number of records for the study_population(time criteria applied)",
+#                                            "Exclude:Number of records with empty meaning",
+#                                            "Exclude: Number of records with both code and vocabulary variables missing",
+#                                            "Exclude: Number of records with empty vocabulary when code is present",
+#                                            "Exclude: Number of records with vocabularies not present in the codelist",
+#                                            "Exclude: Number of records with unknown or other sex",
+#                                            "Number of records for study_population"),
+#                                EVENTS=c(orig_no_rows_events,
+#                                         events_excluded_meanings,
+#                                         events_study_pop,
+#                                         events_date_miss,
+#                                         events_out_st_per,
+#                                         events_study_pop_obsper,
+#                                         events_stdpop_no_meaning,
+#                                         events_code_vocabulary_miss,
+#                                         events_code_pres_voc_miss,
+#                                         events_not_vocabularies,
+#                                         events_sex_not_specified,
+#                                         events_study_population))
+#   
+#   rm(orig_no_rows_events,events_excluded_meanings,events_study_pop,events_date_miss,events_out_st_per,
+#      events_study_pop_obsper,events_stdpop_no_meaning,events_code_vocabulary_miss,events_code_pres_voc_miss,
+#      events_not_vocabularies,events_sex_not_specified,events_study_population)
+#   
+#   ##################################################################################################
+#   #Description
+#   ##################################################################################################
+#   print("Creating description of study population.")
+#   #meanings
+#   print("Get list of meanings.")
+#   meanings_events<-Filter(length,meanings_events)
+#   meanings_events<-suppressWarnings(do.call(rbind,meanings_events))
+#   meanings_events<-unique(c(meanings_events))
+#   meanings_events_des<-paste(meanings_events, collapse = ", ")
+  #study years
+  # years_events<-Filter(length,years_events)
+  # years_events<-suppressWarnings(do.call(rbind, years_events))
+  # years_events<-unique(c(years_events))
+  # years_events_des<-paste(sort(years_events), collapse=", ")
+  #
+#   male_population_events<-do.call(rbind, male_population_events)
+#   male_population_events<-sum(male_population_events)
+#   female_population_events<-do.call(rbind, female_population_events)
+#   female_population_events<-sum(female_population_events)
+#   if(male_population_events>0 & female_population_events>0){sex_included_events<-c("Males, Females")}
+#   if(male_population_events==0 & female_population_events>0){sex_included_events<-c("Females")}
+#   if(male_population_events>0 & female_population_events==0){sex_included_events<-c("Males")}
+#   if(male_population_events==0 & female_population_events==0){sex_included_events<-c("None")}
+#   females_childbearing_events<-do.call(rbind,females_childbearing_events)
+#   females_childbearing_events<-sum(females_childbearing_events)
+#   females_childbearing_events<-ifelse(females_childbearing_events>0,"Yes","No")
+#   
+#   print("Create description.")
+#   description_events<-data.table(INDICATOR=c("Data access provider(data source name)",
+#                                              "List of meanings present",
+#                                              "Years included in the study period",
+#                                              "Sex included in the study population",
+#                                              "Number of subjects in the study population without a recorded diagnosis",
+#                                              "Presence of females of child-bearing age 12-55 years old (based on age at start follow up)"),
+#                                  EVENTS=c(paste0(data_access_provider_name,"(",data_source_name,")"),
+#                                           meanings_events_des,
+#                                           years_events_des,
+#                                           sex_included_events,
+#                                           stdpop_not_events,
+#                                           females_childbearing_events))
+#   
+#   rm(meanings_events_des,years_events_des,sex_included_events,stdpop_not_events)
+#   
+#   ##############################################################################
+#   #tab20
+#   ##############################################################################
+#   events_study_population_my<-do.call(rbind,events_study_population_my)
+#   setnames(events_study_population_my,"N","no_records")
+#   if(events_study_population_my[,.N]>0){
+#     events_study_population_my<-events_study_population_my[,lapply(.SD,sum),by=c("meaning", "year"), .SDcols="no_records"]
+#   }
+#   empty_event_code.my<-do.call(rbind,empty_event_code.my)
+#   setnames(empty_event_code.my,"N", "no_empty_code")
+#   if(empty_event_code.my[,.N]>0){
+#     empty_event_code.my<-empty_event_code.my[,lapply(.SD,sum),by=c("meaning", "year"), .SDcols="no_empty_code"]
+#   }
+#   if(empty_event_code.my[,.N]==0){
+#     tab20_events<-data.table(events_study_population_my, no_empty_code=0)
+#   } else {
+#     events_study_population_my[,meaning:=as.character(meaning)][,year:=as.character(year)]
+#     empty_event_code.my[,meaning:=as.character(meaning)][,year:=as.character(year)]
+#     tab20_events<-merge(events_study_population_my,empty_event_code.my, by=c("meaning","year"), all=T)
+#     tab20_events[is.na(no_empty_code),no_empty_code:=0]
+#   }
+#   if(tab20_events[is.na(meaning),.N]==1 & tab20_events[,.N]==1){tab20_events<-NULL}
+#   
+#   rm(empty_event_code.my)
+#   
+  ######################
+  #Combine populations
+  #####################
+  #conditions_codelist <- list()
+  
+
+  
+  # conditions_codelist <- c("Nausea", "Nausea and vomiting", "Retching", "Nausea present", "Tremor", "Essential Tremor", "Tremor NEC in ICD9CM_2013_2012_08_06", "Essential and other specified forms of tremor", "Trembling")
+  # conditions_codelist <-names(conditions_all[[1]])
+  ############################################################
+  #Combine dataset by year and condition
+  # conditions_files<-c(list.files(events_tmp, "\\_start.rds$"),
+  #                     list.files(events_tmp, "\\_RCD.rds$"),
+  #                     list.files(events_tmp, "\\_SNOMED.rds$")
+  #                     )
+
+    # if (length(conditions_files)>0){
+    #   #create combination year_condition from years(years present in the study) and all names of conditions in the codelist
+    #       filter_var<-as.data.table(expand.grid(years_events,conditions_codelist))
+    #       names(filter_var)<-c("year","diagnosis")
+    #       filter_var[, comb:= paste0(year, "_", diagnosis)]
+    #       filter_var<-filter_var[!duplicated(comb)]
+    #       #Create list by conditions and years
+    #       files<-vector(mode="list", length=filter_var[,.N])
+    #       names(files)<-filter_var[["comb"]]
+    #       for (i in 1:length(files)){
+    #         files[[i]]<-conditions_files[grepl(names(files)[i], conditions_files)]
+    #       }
+    #           files<-Filter(length,files) #all files are separated based on year and diagnosis
+    # }
+#     
+  
+  
+#     ############################################################################
+#     #Load each list element by combining all files inside one element
+#     #perform the necessary counts
+#     #export the data in populations named by events_year_condition_sex_population where sex==female
+#     #remove all files from tmp
+#     ############################################################################
+#     for (i in 1:length(files)){
+#       combined_diagnosis_events<-lapply(paste0(events_tmp,files[[i]]), readRDS)
+#       combined_diagnosis_events<-do.call(rbind,combined_diagnosis_events)
+#       combined_diagnosis_events[,code_nodot:=gsub("\\.","",event_code)]
+#       # combined_diagnosis_events[event_vocabulary!="SNOMEDCT_US",truncated_code:=substr(code_nodot,1,4)]
+#       # combined_diagnosis_events[event_vocabulary=="SNOMEDCT_US",truncated_code:=event_code]
+#       combined_diagnosis_events[event_vocabulary %!in% c("SNOMEDCT_US", "SCTSPA"),truncated_code:=substr(code_nodot,1,4)]
+#       combined_diagnosis_events[event_vocabulary %!in% c("SNOMEDCT_US", "SCTSPA"),truncated_code:=event_code]
+#       
+#       if (subpopulations_present=="Yes"){
+#         if(combined_diagnosis_events[,.N]>0){
+#           saveRDS(combined_diagnosis_events, paste0(diag_pop,subpopulations_names[s], "/", names(files)[i],"_events_diagnoses.rds"))
+#         }
+#       } else {
+#         if(combined_diagnosis_events[,.N]>0){
+#           saveRDS(combined_diagnosis_events, paste0(diag_pop,names(files)[i],"_events_diagnoses.rds"))
+#         }
+#       }
+#     }
+#     #rm(files)
+#     
+#     for(i in 1:length(conditions_files)){
+#       unlink(paste0(events_tmp,conditions_files[i]))
+#     }
+#   }
+#   
+# } else {
+#   flowchart_events<-data.table(indicator=c("Number of records in the original table",
+#                                            "Number of subjects in the original study population table",
+#                                            "Exclude:Number of records with excluded meanings",
+#                                            "Number of records for the study_population(no time criteria)",
+#                                            "Exclude: Number of records with date record missing",
+#                                            "Exclude: Number of records with date record outside study period",
+#                                            "Number of records for the study_population(time criteria applied)",
+#                                            "Exclude:Number of records with empty meaning",
+#                                            "Exclude: Number of records with both code and vocabulary variables missing",
+#                                            "Exclude: Number of records with empty vocabulary when code is present",
+#                                            "Exclude: Number of records with vocabularies not present in the codelist",
+#                                            "Exclude: Number of records with unknown or other sex",
+#                                            "Number of records for study_population"),
+#                                EVENTS="N/A")
+#   
+#   description_events<-data.table(INDICATOR=c("Data access provider(data source name)",
+#                                              "List of meanings present",
+#                                              "Years included in the study period",
+#                                              "Sex included in the study population",
+#                                              "Number of subjects in the study population without a recorded diagnosis",
+#                                              "Presence of females of child-bearing age 12-55 years old (based on age at start follow up)"),
+#                                  EVENTS="N/A")
+#   tab20_events<-NULL
+#   
+#   
+  
+} 
+
+

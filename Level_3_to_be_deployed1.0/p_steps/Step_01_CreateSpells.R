@@ -146,7 +146,7 @@ print("merging gaps<=7")
  
  
  before_merge<-nrow(OBSERVATION_PERIODS)
- OBSERVATION_PERIODS_merge1<-merge_gap(OBSERVATION_PERIODS, ID="person_id", startdate="op_start_date", enddate="op_end_date", gap=7)
+ OBSERVATION_PERIODS_merge<-merge_gap(OBSERVATION_PERIODS, ID="person_id", startdate="op_start_date", enddate="op_end_date", gap=7)
  
  print("Create spells BUT not select latest for ALL")
  before_create_spells <- nrow(OBSERVATION_PERIODS)

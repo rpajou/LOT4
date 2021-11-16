@@ -22,6 +22,8 @@ setwd(projectFolder)
 #set up test_sample folder
 dir.create(paste0(projectFolder,"_sample_test"))
 
+sample_folder<-(paste0(projectFolder,"_sample_test"))
+
 my_perc<-0.1
 
 tables_preselect<-list()
@@ -46,24 +48,6 @@ for(i in 1:length(tables_preselect)){
   tablename<-(tables_preselect[i])
   mytable<-fread(paste0(projectFolder,"/",tablename))
   sample_table<-mytable[mytable$person_id%in%sample_id,]
-  fwrite(sample_table, paste0(projectFolder,"_sample_test/", tablename), row.names = F)
+  fwrite(sample_table, paste0(sample_folder, "/", tablename), row.names = F)
 }
 
-
-
-for(i in 1:length(tables_preselect)){
-  tablename<-tables_preselect[i]
-  mytable<-fread(paste0(projectFolder,"/",tablename))
-  numrow<-(nrow(mytable))*my_perc
-  mysample<- mytable[sample(nrow(mytable), numrow), ]
-  fwrite(mytable, paste0(projectFolder,"/","_sample_test/", tablename), row.names = F)
-}
-
-
-
-for(i in 1:length(tables_vec_all)){
-  tablename<-(tables_vec_all[i])
-  mytable<-fread(paste0(projectFolder,"/",tablename))
-  preselect_table<-mytable[mytable$person_id%in%final_ID,]
-  fwrite(preselect_table, paste0(projectFolder,"/","CDMInstances_preselect/", tablename), row.names = F)
-}
